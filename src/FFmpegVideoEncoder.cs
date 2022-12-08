@@ -4,11 +4,13 @@ using System.Runtime.InteropServices;
 using FFmpeg.AutoGen;
 using Microsoft.Extensions.Logging;
 using SIPSorceryMedia.Abstractions;
+// ReSharper disable All 
 
 namespace SIPSorceryMedia.FFmpeg
 {
     public sealed unsafe class FFmpegVideoEncoder : IVideoEncoder, IDisposable
     {
+        private readonly long? bitrate;
         private static readonly List<VideoFormat> _supportedFormats = Helper.GetSupportedVideoFormats();
 
         public List<VideoFormat> SupportedFormats
@@ -35,12 +37,14 @@ namespace SIPSorceryMedia.FFmpeg
 
         private ILogger logger = SIPSorcery.LogFactory.CreateLogger<FFmpegVideoEncoder>();
 
-        public FFmpegVideoEncoder(Dictionary<string, string>? encoderOptions = null)
+        public FFmpegVideoEncoder(Dictionary<string, string>? encoderOptions = null, long? bitrate = 10000000, bool? traceLogging = true)
         {
+            this.bitrate = bitrate;
             _encoderOptions = encoderOptions ?? new Dictionary<string, string>();
-            
+
             //ffmpeg.av_log_set_level(ffmpeg.AV_LOG_VERBOSE);
-            //ffmpeg.av_log_set_level(ffmpeg.AV_LOG_TRACE);
+            if (traceLogging.HasValue && traceLogging.Value)
+                ffmpeg.av_log_set_level(ffmpeg.AV_LOG_TRACE);
         }
 
         public byte[]? EncodeVideo(int width, int height, byte[] sample, VideoPixelFormatsEnum pixelFormat, VideoCodecsEnum codec)
@@ -147,6 +151,8 @@ namespace SIPSorceryMedia.FFmpeg
                 _encoderContext->time_base.num = 1;
                 _encoderContext->framerate.den = 1;
                 _encoderContext->framerate.num = fps;
+                if (bitrate != null)
+                    _encoderContext->bit_rate = bitrate.Value;
 
                 _encoderContext->pix_fmt = AVPixelFormat.AV_PIX_FMT_YUV420P;
 
@@ -158,8 +164,8 @@ namespace SIPSorceryMedia.FFmpeg
 
                 if (_codecID == AVCodecID.AV_CODEC_ID_H264)
                 {
-                    //_videoCodecContext->profile = ffmpeg.FF_PROFILE_H264_CONSTRAINED_BASELINE;
-                    ffmpeg.av_opt_set(_encoderContext->priv_data, "profile", "baseline", 0).ThrowExceptionIfError();
+                    _encoderContext->profile = ffmpeg.FF_PROFILE_H264_CONSTRAINED;
+                    // ffmpeg.av_opt_set(_encoderContext->priv_data, "profile", "baseline", 0).ThrowExceptionIfError();
                     //ffmpeg.av_opt_set(_videoCodecContext->priv_data, "packetization-mode", "0", 0).ThrowExceptionIfError();
                     //ffmpeg.av_opt_set(_pCodecContext->priv_data, "preset", "veryslow", 0);
                     //ffmpeg.av_opt_set(_videoCodecContext->priv_data, "profile-level-id", "42e01f", 0);
@@ -170,13 +176,14 @@ namespace SIPSorceryMedia.FFmpeg
                 {
                     ffmpeg.av_opt_set(_encoderContext->priv_data, "quality", "realtime", 0).ThrowExceptionIfError();
                 }
-                
+
                 foreach (var option in _encoderOptions)
                 {
                     ffmpeg.av_opt_set(_encoderContext->priv_data, option.Key, option.Value, 0).ThrowExceptionIfError();
                 }
+                // AVDictionary* options = null;
+                // ffmpeg.av_dict_set(&options, "b:v", "100000", 0).ThrowExceptionIfError();
 
-                
                 ffmpeg.avcodec_open2(_encoderContext, codec, null).ThrowExceptionIfError();
 
 
@@ -221,7 +228,7 @@ namespace SIPSorceryMedia.FFmpeg
             {
                 width = width,
                 height = height,
-                format = (int)AVPixelFormat.AV_PIX_FMT_YUV420P,
+                format = (int)AVPixelFormat.AV_PIX_FMT_YUV420P
             };
 
 
@@ -261,14 +268,16 @@ namespace SIPSorceryMedia.FFmpeg
                     else
                     {
                         if (_encoderPixelConverter == null ||
-                           _encoderPixelConverter.SourceWidth != width ||
-                           _encoderPixelConverter.SourceHeight != height)
+                            _encoderPixelConverter.SourceWidth != width ||
+                            _encoderPixelConverter.SourceHeight != height)
                         {
                             _encoderPixelConverter = new VideoFrameConverter(
-                               width, height,
-                               pixelFormat,
-                               width, height,
-                               AVPixelFormat.AV_PIX_FMT_YUV420P);
+                                width,
+                                height,
+                                pixelFormat,
+                                width,
+                                height,
+                                AVPixelFormat.AV_PIX_FMT_YUV420P);
                         }
 
                         avFrame = _encoderPixelConverter.Convert(sample);
@@ -373,7 +382,7 @@ namespace SIPSorceryMedia.FFmpeg
 
         public List<RawImage>? DecodeFaster(AVCodecID codecID, byte[] buffer, out int width, out int height)
         {
-            if ( (!_isDisposed) && (buffer != null))
+            if ((!_isDisposed) && (buffer != null))
             {
                 lock (_decoderLock)
                 {
@@ -422,7 +431,7 @@ namespace SIPSorceryMedia.FFmpeg
                 {
                     List<RawImage> rgbFrames = new List<RawImage>();
 
-                    if( ffmpeg.avcodec_send_packet(_decoderContext, packet) < 0 )
+                    if (ffmpeg.avcodec_send_packet(_decoderContext, packet) < 0)
                     {
                         width = height = 0;
                         return null;
@@ -440,9 +449,11 @@ namespace SIPSorceryMedia.FFmpeg
                             _i420ToRgb.SourceHeight != height)
                         {
                             _i420ToRgb = new VideoFrameConverter(
-                                width, height,
+                                width,
+                                height,
                                 (AVPixelFormat)decodedFrame->format,
-                                width, height,
+                                width,
+                                height,
                                 AVPixelFormat.AV_PIX_FMT_BGR24);
                         }
 
