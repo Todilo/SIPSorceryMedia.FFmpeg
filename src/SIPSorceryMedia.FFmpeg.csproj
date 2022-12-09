@@ -13,6 +13,14 @@
     <GeneratePackageOnBuild>True</GeneratePackageOnBuild>
   </PropertyGroup>
 
+  <PropertyGroup Condition=" '$(Configuration)' == 'Debug' ">
+    <WarningLevel>0</WarningLevel>
+  </PropertyGroup>
+
+  <PropertyGroup Condition=" '$(Configuration)' == 'Release' ">
+    <WarningLevel>0</WarningLevel>
+  </PropertyGroup>
+
   <ItemGroup>
     <NativeLibs Include="$(MSBuildThisFileDirectory)\..\lib\x86\*.dll" Condition="'$(Platform)' == 'x86'" />
     <NativeLibs Include="$(MSBuildThisFileDirectory)\..\lib\x64\*.dll" Condition="'$(Platform)' == 'x64' or '$(Platform)' == 'AnyCPU'" />
